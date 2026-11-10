@@ -1,0 +1,237 @@
+{
+  "name": "PDF Invoice Extractor (Gemini → Google Sheets)",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Upload Invoice",
+        "formDescription": "Upload a PDF invoice. Supplier, invoice number, date and total are extracted and saved to Google Sheets.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Invoice",
+              "fieldType": "file",
+              "fieldName": "Invoice",
+              "multipleFiles": false,
+              "acceptFileTypes": ".pdf",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "path": "invoice-upload",
+          "respondWithOptions": {
+            "values": {
+              "formSubmittedText": "Thanks! Your invoice is being processed."
+            }
+          }
+        }
+      },
+      "id": "ad7a9c38-8a42-49b7-8623-4e8cc7d1cdad",
+      "name": "Upload Invoice PDF",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "fa56da9f-b065-4c0b-8afe-802e9d39800a"
+    },
+    {
+      "parameters": {
+        "resource": "document",
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "models/gemini-3.8-flash",
+          "cachedResultName": "Gemini 3.8 Flash"
+        },
+        "text": "You are an invoice data extractor. Read this invoice and return ONLY a JSON object, with no markdown and no extra text, using exactly these keys: {\"supplier_name\": string, \"invoice_number\": string, \"invoice_date\": string in YYYY-MM-DD format, \"total_amount\": number without currency symbols or thousand separators, \"currency\": ISO 4217 code like USD or BDT}. Use null for any value you cannot find.",
+        "inputType": "binary",
+        "binaryPropertyName": "Invoice",
+        "options": {
+          "maxOutputTokens": 4096
+        }
+      },
+      "id": "e1f4e5f2-e82a-43ef-ae4a-cd8e98b5e2fc",
+      "name": "Extract Invoice Data",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "b2bVDEYSTI4j0LvO",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const j = $json;\nlet raw = '';\nif (j.content && Array.isArray(j.content.parts)) {\n  raw = j.content.parts.map(p => p.text || '').join('');\n} else if (typeof j.text === 'string') {\n  raw = j.text;\n} else if (typeof j.content === 'string') {\n  raw = j.content;\n} else {\n  raw = JSON.stringify(j);\n}\nraw = raw.replace(/```json/gi, '').replace(/```/g, '').trim();\nconst start = raw.indexOf('{');\nconst end = raw.lastIndexOf('}');\nlet data = {};\ntry {\n  data = JSON.parse(raw.slice(start, end + 1));\n} catch (e) {\n  throw new Error('Gemini did not return valid JSON: ' + raw.slice(0, 300));\n}\nlet total = data.total_amount;\nif (typeof total === 'string') {\n  const n = parseFloat(total.replace(/[^0-9.\\-]/g, ''));\n  total = isNaN(n) ? total : n;\n}\nreturn {\n  json: {\n    'Supplier Name': data.supplier_name ?? '',\n    'Invoice Number': data.invoice_number ?? '',\n    'Invoice Date': data.invoice_date ?? '',\n    'Total Amount': total ?? '',\n    'Currency': data.currency ?? '',\n    'Processed At': $now.toISO(),\n  },\n};"
+      },
+      "id": "16b72c51-4930-433d-af32-f5b00db88a29",
+      "name": "Parse Extracted Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "1-Tco65agP7ZwKdFfIxLVUXfmMoedoVRXVY8f2dLg1Os",
+          "cachedResultName": "AI_Invoices_DB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1-Tco65agP7ZwKdFfIxLVUXfmMoedoVRXVY8f2dLg1Os/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gid=0",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1-Tco65agP7ZwKdFfIxLVUXfmMoedoVRXVY8f2dLg1Os/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Supplier Name": "={{ $json[\"Supplier Name\"] }}",
+            "Invoice Number": "={{ $json[\"Invoice Number\"] }}",
+            "Invoice Date": "={{ $json[\"Invoice Date\"] }}",
+            "Total Amount": "={{ $json[\"Total Amount\"] }}",
+            "Currency": "={{ $json[\"Currency\"] }}",
+            "Processed At": "={{ $json[\"Processed At\"] }}"
+          },
+          "schema": [
+            {
+              "id": "Supplier Name",
+              "displayName": "Supplier Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Invoice Number",
+              "displayName": "Invoice Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Invoice Date",
+              "displayName": "Invoice Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Total Amount",
+              "displayName": "Total Amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Currency",
+              "displayName": "Currency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Processed At",
+              "displayName": "Processed At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3622e7e8-12a9-492a-886a-987a176d3f81",
+      "name": "Save to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        672,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "eEArH0BmKqt9QM7A",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Upload Invoice PDF": {
+      "main": [
+        [
+          {
+            "node": "Extract Invoice Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Invoice Data": {
+      "main": [
+        [
+          {
+            "node": "Parse Extracted Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Extracted Fields": {
+      "main": [
+        [
+          {
+            "node": "Save to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "b0842fc6-1d45-419f-b415-2b58a610b1c4",
+  "meta": {
+    "instanceId": "4b531d4fdb182e5171a16efd2a55248f2ca0dd788ada26624d899905b4b7f8e2"
+  },
+  "nodeGroups": [],
+  "id": "qacBvtNfZrrmZd2a",
+  "tags": []
+}
